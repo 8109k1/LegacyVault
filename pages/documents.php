@@ -1,0 +1,29 @@
+<?php
+require_once __DIR__ . '/../includes/bootstrap.php'; require_document_otp();
+$uid=(int)$_SESSION['user_id']; $error=''; $success='';
+$categories=['Identity Proof','Property','Insurance','Bank','Medical','Education','Other'];
+if ($_SERVER['REQUEST_METHOD']==='POST') {
+ verify_csrf(); $action=(string)($_POST['action']??'');
+ if ($action==='upload') {
+  $category=(string)($_POST['category']??'Other'); if(!in_array($category,$categories,true))$category='Other';
+  if (!isset($_FILES['document']) || $_FILES['document']['error']!==UPLOAD_ERR_OK) $error='Choose a file to upload (maximum 5 MB).';
+  elseif ($_FILES['document']['size']>5*1024*1024) $error='The file exceeds the 5 MB limit.';
+  else {
+   $tmp=$_FILES['document']['tmp_name']; $finfo=new finfo(FILEINFO_MIME_TYPE); $mime=$finfo->file($tmp);
+   $allowed=['application/pdf'=>'pdf','image/jpeg'=>'jpg','image/png'=>'png'];
+   if(!isset($allowed[$mime])) $error='Only PDF, JPG, and PNG files are allowed.';
+   else {
+    $original=basename((string)$_FILES['document']['name']); $original=preg_replace('/[^A-Za-z0-9._ -]/','_', $original); $stored=bin2hex(random_bytes(24)).'.'.$allowed[$mime];
+    $dir=__DIR__.'/../storage/uploads'; if(!is_dir($dir))mkdir($dir,0700,true); $target=$dir.'/'.$stored;
+    if(!move_uploaded_file($tmp,$target))$error='The file could not be saved. Check folder permissions.';
+    else { try{$stmt=db()->prepare('INSERT INTO documents (user_id,original_name,stored_name,category,mime_type,file_size) VALUES (?,?,?,?,?,?)');$stmt->execute([$uid,$original,$stored,$category,$mime,filesize($target)]);$success='Document uploaded securely.';}catch(Throwable $ex){@unlink($target);$error='Database save failed. Please try again.';error_log($ex->getMessage());} }
+   }
+  }
+ } elseif($action==='delete') {
+  $id=(int)($_POST['document_id']??0);$stmt=db()->prepare('SELECT stored_name FROM documents WHERE id=? AND user_id=?');$stmt->execute([$id,$uid]);$d=$stmt->fetch();
+  if($d){db()->prepare('DELETE FROM documents WHERE id=? AND user_id=?')->execute([$id,$uid]);$file=__DIR__.'/../storage/uploads/'.$d['stored_name'];if(is_file($file))@unlink($file);$success='Document deleted.';}else $error='Document not found.';
+ }
+}
+$stmt=db()->prepare('SELECT id,original_name,category,uploaded_at,file_size FROM documents WHERE user_id=? ORDER BY uploaded_at DESC');$stmt->execute([$uid]);$docs=$stmt->fetchAll();
+?>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Secure Documents | LegacyVault</title><link rel="stylesheet" href="../css/style.css"></head><body class="app-page"><aside class="sidebar"><a class="brand side-brand" href="dashboard.php"><span class="brand-icon">▣</span> LegacyVault</a><nav class="side-nav"><a href="dashboard.php">⌂ <span>Dashboard</span></a><a class="active" href="documents.php">▤ <span>Documents</span></a><a href="logout.php">↪ <span>Logout</span></a></nav></aside><main class="app-main"><header class="app-header"><div><h1>Secure Documents</h1><p>Your vault is unlocked for a limited time after OTP verification.</p></div><div class="user-chip"><span class="avatar"><?=e(strtoupper(substr($_SESSION['user_name']??'U',0,1)))?></span><?=e($_SESSION['user_name']??'User')?></div></header><?php if($error): ?><div class="notice error"><?=e($error)?></div><?php endif; ?><?php if($success): ?><div class="notice success"><?=e($success)?></div><?php endif; ?><div class="security-note">Security session active. Sign out when finished. Uploaded files are stored outside the public page path and can only be downloaded through your authenticated account.</div><section class="panel"><div class="panel-head"><h2>Your Documents (<?=count($docs)?>)</h2></div><?php if(!$docs): ?><p style="font-size:13px;color:#737792">No documents yet. Use the form below to upload your first file.</p><?php else: ?><div style="overflow-x:auto"><table id="documentsTable"><thead><tr><th>File Name</th><th>Category</th><th>Upload Date</th><th>Size</th><th>Actions</th></tr></thead><tbody><?php foreach($docs as $d): ?><tr><td><?=e($d['original_name'])?></td><td><?=e($d['category'])?></td><td><?=e(date('d M Y',strtotime($d['uploaded_at'])))?></td><td><?=e(number_format($d['file_size']/1024,1))?> KB</td><td><a class="inline-link" href="download.php?id=<?=(int)$d['id']?>">Download</a><form method="post" style="display:inline" onsubmit="return confirm('Delete this document permanently?')"><input type="hidden" name="csrf_token" value="<?=e(csrf_token())?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="document_id" value="<?=(int)$d['id']?>"><button type="submit" style="border:0;background:none;color:#b42335;cursor:pointer;margin-left:10px">Delete</button></form></td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></section><section class="panel upload-panel"><h2>Upload a Document</h2><form method="post" enctype="multipart/form-data" class="upload-form"><input type="hidden" name="csrf_token" value="<?=e(csrf_token())?>"><input type="hidden" name="action" value="upload"><label>Category<select name="category" required><?php foreach($categories as $c): ?><option value="<?=e($c)?>"><?=e($c)?></option><?php endforeach; ?></select></label><label>Choose PDF / JPG / PNG (max 5 MB)<input type="file" name="document" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required></label><button class="btn btn-primary" type="submit">Upload Securely</button></form></section><p style="font-size:11px;color:#737792;margin-top:18px">For safety, this student project is a prototype. Do not upload real Aadhaar, bank, medical, or other sensitive documents until production-grade encryption, hosting, backups, and security review are added.</p></main></body></html>

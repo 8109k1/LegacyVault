@@ -1,0 +1,342 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beneficiaries | LegacyVault</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body class="app-page">
+
+  <aside class="sidebar">
+    <a class="brand side-brand" href="dashboard.html">
+      <span class="brand-icon">▣</span> LegacyVault
+    </a>
+
+    <nav class="side-nav">
+      <a href="dashboard.html">⌂ <span>Dashboard</span></a>
+      <a href="documents.html">▤ <span>Documents</span></a>
+      <a class="active" href="beneficiaries.html">♙ <span>Beneficiaries</span></a>
+      <a href="messages.html">✉ <span>Messages</span></a>
+      <a href="profile.html">♙ <span>Profile</span></a>
+      <a href="documents.html">⌕ <span>Search Documents</span></a>
+      <a href="#" id="lockLink">⚙ <span>Lock Vault</span></a>
+      <a href="#" id="logoutLink">↪ <span>Logout</span></a>
+    </nav>
+  </aside>
+
+  <main class="app-main">
+    <header class="app-header">
+      <div>
+        <h1>Beneficiaries</h1>
+        <p>Manage trusted people connected to your vault.</p>
+      </div>
+      <button class="btn btn-primary" id="addButton">
+        + Add Beneficiary
+      </button>
+    </header>
+
+    <p id="statusMessage" role="status" aria-live="polite"></p>
+
+    <div class="panel">
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Relationship</th>
+              <th>Email</th>
+              <th>Phone</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="beneficiaryRows">
+            <tr>
+              <td colspan="5">Loading beneficiaries...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <div class="modal" id="beneficiaryModal" hidden>
+    <div class="modal-card">
+      <button class="close" id="closeModal" type="button"
+        aria-label="Close">&times;</button>
+
+      <h2 id="modalTitle">Add Beneficiary</h2>
+
+      <form id="beneficiaryForm">
+        <label>
+          Name
+          <input id="fullName" name="fullName"
+            placeholder="Full name" maxlength="100" required>
+        </label>
+
+        <label>
+          Relationship
+          <select id="relationship" name="relationship" required>
+            <option value="">Select relationship</option>
+            <option>Parent</option>
+            <option>Spouse</option>
+            <option>Child</option>
+            <option>Sibling</option>
+            <option>Relative</option>
+            <option>Friend</option>
+            <option>Other</option>
+          </select>
+        </label>
+
+        <label>
+          Email
+          <input id="email" name="email" type="email"
+            placeholder="Email address" maxlength="254" required>
+        </label>
+
+        <label>
+          Phone (optional)
+          <input id="phone" name="phone" type="tel"
+            placeholder="Phone number" maxlength="20">
+        </label>
+
+        <label>
+          Notes (optional)
+          <textarea id="notes" name="notes"
+            placeholder="Additional information" maxlength="500"></textarea>
+        </label>
+
+        <button class="btn btn-primary full" id="saveButton" type="submit">
+          Save Beneficiary
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const rows = document.getElementById("beneficiaryRows");
+    const modal = document.getElementById("beneficiaryModal");
+    const form = document.getElementById("beneficiaryForm");
+    const statusMessage = document.getElementById("statusMessage");
+    const saveButton = document.getElementById("saveButton");
+
+    let beneficiaries = [];
+    let editingId = null;
+
+    async function api(url, options = {}) {
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        ...options,
+        headers: {
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...options.headers
+        }
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Please sign in again.");
+        }
+        if (response.status === 423) {
+          throw new Error("Your vault is locked. Unlock it to continue.");
+        }
+        throw new Error(data.error || "Request failed.");
+      }
+
+      return data;
+    }
+
+    function showStatus(message, isError = false) {
+      statusMessage.textContent = message;
+      statusMessage.style.color = isError ? "crimson" : "";
+    }
+
+    function addCell(row, value) {
+      const cell = document.createElement("td");
+      cell.textContent = value || "—";
+      row.appendChild(cell);
+      return cell;
+    }
+
+    function renderRows() {
+      rows.replaceChildren();
+
+      if (!beneficiaries.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 5;
+        cell.textContent = "No beneficiaries added yet.";
+        row.appendChild(cell);
+        rows.appendChild(row);
+        return;
+      }
+
+      beneficiaries.forEach((person) => {
+        const row = document.createElement("tr");
+
+        addCell(row, person.fullName);
+        addCell(row, person.relationship);
+        addCell(row, person.email);
+        addCell(row, person.phone);
+
+        const actions = document.createElement("td");
+
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.textContent = "Edit";
+        edit.addEventListener("click", () => openEdit(person));
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Delete";
+        remove.style.marginLeft = "8px";
+        remove.addEventListener("click", () => deleteBeneficiary(person));
+
+        actions.append(edit, remove);
+        row.appendChild(actions);
+        rows.appendChild(row);
+      });
+    }
+
+    async function loadBeneficiaries() {
+      rows.replaceChildren();
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = 5;
+      cell.textContent = "Loading beneficiaries...";
+      row.appendChild(cell);
+      rows.appendChild(row);
+
+      try {
+        const data = await api("/api/beneficiaries");
+        beneficiaries = data.beneficiaries || [];
+        renderRows();
+        showStatus("");
+      } catch (error) {
+        rows.replaceChildren();
+        const errorRow = document.createElement("tr");
+        const errorCell = document.createElement("td");
+        errorCell.colSpan = 5;
+        errorCell.textContent = error.message;
+        errorRow.appendChild(errorCell);
+        rows.appendChild(errorRow);
+        showStatus(error.message, true);
+      }
+    }
+
+    function openAdd() {
+  editingId = null;
+  form.reset();
+
+  document.getElementById("modalTitle").textContent = "Add Beneficiary";
+  saveButton.textContent = "Save Beneficiary";
+
+  modal.style.display = "flex";
+  modal.hidden = false;
+}
+    function openEdit(person) {
+  editingId = person.id;
+
+  document.getElementById("fullName").value = person.fullName;
+  document.getElementById("relationship").value = person.relationship;
+  document.getElementById("email").value = person.email;
+  document.getElementById("phone").value = person.phone || "";
+  document.getElementById("notes").value = person.notes || "";
+
+  document.getElementById("modalTitle").textContent = "Edit Beneficiary";
+  saveButton.textContent = "Update Beneficiary";
+
+  modal.style.display = "flex";
+  modal.hidden = false;
+}
+
+    function closeModal() {
+  modal.style.display = "none";
+  modal.hidden = true;
+  editingId = null;
+  form.reset();
+}
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const beneficiary = {
+        fullName: document.getElementById("fullName").value.trim(),
+        relationship: document.getElementById("relationship").value,
+        email: document.getElementById("email").value.trim(),
+        phone: document.getElementById("phone").value.trim(),
+        notes: document.getElementById("notes").value.trim()
+      };
+
+      saveButton.disabled = true;
+
+      try {
+        if (editingId) {
+          await api("/api/beneficiaries/" + encodeURIComponent(editingId), {
+            method: "PUT",
+            body: JSON.stringify(beneficiary)
+          });
+          showStatus("Beneficiary updated successfully.");
+        } else {
+          await api("/api/beneficiaries", {
+            method: "POST",
+            body: JSON.stringify(beneficiary)
+          });
+          showStatus("Beneficiary added successfully.");
+        }
+
+        closeModal();
+        await loadBeneficiaries();
+      } catch (error) {
+        showStatus(error.message, true);
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+
+    async function deleteBeneficiary(person) {
+      if (!confirm("Remove " + person.fullName + " from your beneficiaries?")) {
+        return;
+      }
+
+      try {
+        await api("/api/beneficiaries/" + encodeURIComponent(person.id), {
+          method: "DELETE"
+        });
+        showStatus("Beneficiary removed successfully.");
+        await loadBeneficiaries();
+      } catch (error) {
+        showStatus(error.message, true);
+      }
+    }
+
+    document.getElementById("addButton").addEventListener("click", openAdd);
+    document.getElementById("closeModal").addEventListener("click", closeModal);
+
+    document.getElementById("lockLink").addEventListener("click", async (event) => {
+      event.preventDefault();
+      try {
+        await api("/api/vault/lock", { method: "POST" });
+        window.location.href = "dashboard.html";
+      } catch (error) {
+        showStatus(error.message, true);
+      }
+    });
+
+    document.getElementById("logoutLink").addEventListener("click", async (event) => {
+      event.preventDefault();
+      try {
+        await api("/auth/logout", { method: "POST" });
+        window.location.href = "login.html";
+      } catch (error) {
+        showStatus(error.message, true);
+      }
+    });
+
+    loadBeneficiaries();
+  </script>
+</body>
+</html>

@@ -1,0 +1,341 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Messages | LegacyVault</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    [hidden] { display: none !important; }
+    .message-content {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      margin-top: 12px;
+    }
+    .message-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .message-actions button {
+      cursor: pointer;
+    }
+    .message-form label {
+      display: block;
+      margin: 14px 0;
+    }
+    .message-form input,
+    .message-form textarea,
+    .message-form select {
+      display: block;
+      box-sizing: border-box;
+      width: 100%;
+      margin-top: 6px;
+      padding: 10px;
+    }
+    .message-card {
+      margin-bottom: 16px;
+    }
+    .message-status {
+      margin: 12px 0;
+      overflow-wrap: anywhere;
+    }
+  </style>
+</head>
+<body class="app-page">
+  <aside class="sidebar">
+    <a class="brand side-brand" href="dashboard.html">
+      <span class="brand-icon">▣</span> LegacyVault
+    </a>
+    <nav class="side-nav">
+      <a href="dashboard.html">⌂ <span>Dashboard</span></a>
+      <a href="documents.html">▤ <span>Documents</span></a>
+      <a href="beneficiaries.html">♙ <span>Beneficiaries</span></a>
+      <a class="active" href="messages.html">✉ <span>Messages</span></a>
+      <a href="profile.html">♙ <span>Profile</span></a>
+      <a href="documents.html">⌕ <span>Search Documents</span></a>
+      <a href="#" id="lockLink">⚙ <span>Lock Vault</span></a>
+      <a href="#" id="logoutLink">↪ <span>Logout</span></a>
+    </nav>
+  </aside>
+
+  <main class="app-main">
+    <header class="app-header">
+      <div>
+        <h1>Legacy Instructions</h1>
+        <p>Keep personal messages and important instructions for your family.</p>
+      </div>
+      <button class="btn btn-primary" id="addMessageButton" type="button">
+        + Add Message
+      </button>
+    </header>
+
+    <p id="statusMessage" class="message-status" role="status" aria-live="polite"></p>
+    <section id="messagesList" aria-live="polite">
+      <div class="panel">Loading your messages...</div>
+    </section>
+  </main>
+
+  <div class="modal" id="messageModal" hidden>
+    <div class="modal-card">
+      <button class="close" id="closeMessageButton" type="button" aria-label="Close">×</button>
+      <h2 id="modalTitle">Add Message</h2>
+
+      <form id="messageForm" class="message-form">
+        <label>
+          Title
+          <input id="messageTitle" name="title" maxlength="120"
+            placeholder="e.g. Important Instructions" required>
+        </label>
+
+        <label>
+          For beneficiary (optional)
+          <select id="beneficiaryId" name="beneficiaryId">
+            <option value="">General instruction</option>
+          </select>
+        </label>
+
+        <label>
+          Message
+          <textarea id="messageBody" name="body" rows="7" maxlength="10000"
+            placeholder="Write your personal message or instructions..." required></textarea>
+        </label>
+
+        <button class="btn btn-primary full" id="saveMessageButton" type="submit">
+          Save Message
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const modal = document.getElementById("messageModal");
+    const form = document.getElementById("messageForm");
+    const list = document.getElementById("messagesList");
+    const statusMessage = document.getElementById("statusMessage");
+    const saveButton = document.getElementById("saveMessageButton");
+    const beneficiarySelect = document.getElementById("beneficiaryId");
+
+    let messages = [];
+    let editingId = null;
+
+    async function api(url, options = {}) {
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        ...options,
+        headers: {
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...options.headers
+        }
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        if (response.status === 401) throw new Error("Please sign in again.");
+        if (response.status === 423) throw new Error("Your vault is locked. Unlock it first.");
+        throw new Error(data.error || "Request failed. Please try again.");
+      }
+      return data;
+    }
+
+    function showStatus(message, isError = false) {
+      statusMessage.textContent = message;
+      statusMessage.style.color = isError ? "crimson" : "";
+    }
+
+    function openAddMessage() {
+      editingId = null;
+      form.reset();
+      document.getElementById("modalTitle").textContent = "Add Message";
+      saveButton.textContent = "Save Message";
+      modal.style.display = "flex";
+      modal.hidden = false;
+    }
+
+    function closeMessageModal() {
+      modal.style.display = "none";
+      modal.hidden = true;
+      editingId = null;
+      form.reset();
+    }
+
+    function openEditMessage(message) {
+      editingId = message.id;
+      document.getElementById("messageTitle").value = message.title;
+      document.getElementById("messageBody").value = message.body;
+      beneficiarySelect.value = message.beneficiaryId || "";
+      document.getElementById("modalTitle").textContent = "Edit Message";
+      saveButton.textContent = "Update Message";
+      modal.style.display = "flex";
+      modal.hidden = false;
+    }
+
+    function makeButton(label, handler) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", handler);
+      return button;
+    }
+
+    function renderMessages() {
+      list.replaceChildren();
+
+      if (!messages.length) {
+        const panel = document.createElement("div");
+        panel.className = "panel";
+        panel.textContent = "No messages yet. Select + Add Message to create your first instruction.";
+        list.appendChild(panel);
+        return;
+      }
+
+      messages.forEach(message => {
+        const panel = document.createElement("article");
+        panel.className = "panel message-card";
+
+        const heading = document.createElement("h2");
+        heading.textContent = message.title;
+
+        const date = document.createElement("p");
+        date.textContent = "Created: " + new Date(message.createdAt).toLocaleString();
+
+        const recipient = document.createElement("p");
+        recipient.textContent = "For: " + (message.beneficiaryName || "General instruction");
+
+        const body = document.createElement("p");
+        body.className = "message-content";
+        body.textContent = message.body;
+
+        const actions = document.createElement("div");
+        actions.className = "message-actions";
+        actions.append(
+          makeButton("View", () => {
+            body.hidden = !body.hidden;
+          }),
+          makeButton("Edit", () => openEditMessage(message)),
+          makeButton("Delete", () => deleteMessage(message))
+        );
+
+        body.hidden = true;
+        panel.append(heading, date, recipient, body, actions);
+        list.appendChild(panel);
+      });
+    }
+
+    async function loadBeneficiaries() {
+      const data = await api("/api/beneficiaries");
+      beneficiarySelect.replaceChildren();
+
+      const general = document.createElement("option");
+      general.value = "";
+      general.textContent = "General instruction";
+      beneficiarySelect.appendChild(general);
+
+      (data.beneficiaries || []).forEach(person => {
+        const option = document.createElement("option");
+        option.value = person.id;
+        option.textContent = person.fullName;
+        beneficiarySelect.appendChild(option);
+      });
+    }
+
+    async function loadMessages() {
+      list.textContent = "Loading your messages...";
+      try {
+        const data = await api("/api/messages");
+        messages = data.messages || [];
+        renderMessages();
+        showStatus("");
+      } catch (error) {
+        list.textContent = error.message;
+        showStatus(error.message, true);
+      }
+    }
+
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+
+      const message = {
+        title: document.getElementById("messageTitle").value.trim(),
+        body: document.getElementById("messageBody").value.trim(),
+        beneficiaryId: beneficiarySelect.value
+      };
+
+      saveButton.disabled = true;
+
+      try {
+        if (editingId) {
+          await api("/api/messages/" + encodeURIComponent(editingId), {
+            method: "PUT",
+            body: JSON.stringify(message)
+          });
+          showStatus("Message updated successfully.");
+        } else {
+          await api("/api/messages", {
+            method: "POST",
+            body: JSON.stringify(message)
+          });
+          showStatus("Message saved successfully.");
+        }
+
+        closeMessageModal();
+        await loadMessages();
+      } catch (error) {
+        showStatus(error.message, true);
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+
+    async function deleteMessage(message) {
+      if (!confirm("Delete the message '" + message.title + "'?")) return;
+
+      try {
+        await api("/api/messages/" + encodeURIComponent(message.id), {
+          method: "DELETE"
+        });
+        showStatus("Message deleted.");
+        await loadMessages();
+      } catch (error) {
+        showStatus(error.message, true);
+      }
+    }
+
+    document.getElementById("addMessageButton").addEventListener("click", openAddMessage);
+    document.getElementById("closeMessageButton").addEventListener("click", closeMessageModal);
+
+    document.getElementById("lockLink").addEventListener("click", async event => {
+      event.preventDefault();
+      try {
+        await api("/api/vault/lock", { method: "POST" });
+        window.location.href = "dashboard.html";
+      } catch (error) {
+        showStatus(error.message, true);
+      }
+    });
+
+    document.getElementById("logoutLink").addEventListener("click", async event => {
+      event.preventDefault();
+      try {
+        await api("/auth/logout", { method: "POST" });
+        window.location.href = "login.html";
+      } catch (error) {
+        showStatus(error.message, true);
+      }
+    });
+
+    async function initializePage() {
+      try {
+        await loadBeneficiaries();
+      } catch (error) {
+        showStatus("Could not load beneficiaries: " + error.message, true);
+      }
+      await loadMessages();
+    }
+
+    initializePage();
+  </script>
+</body>
+</html>

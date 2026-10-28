@@ -1,0 +1,307 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard | Digital Will Vault</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body class="app-page">
+<aside class="sidebar">
+  <a class="brand side-brand" href="dashboard.html">
+    <span class="brand-icon">▣</span> Digital Will Vault
+  </a>
+
+  <nav class="side-nav">
+    <a class="active" href="dashboard.html">⌂ <span>Dashboard</span></a>
+    <a href="documents.html">▤ <span>Documents</span></a>
+    <a href="beneficiaries.html">♙ <span>Beneficiaries</span></a>
+    <a href="messages.html">✉ <span>Messages</span></a>
+    <a href="profile.html">♙ <span>Profile</span></a>
+    <a href="documents.html">⌕ <span>Search Documents</span></a>
+    <a href="#" id="lockVaultLink">⚙ <span>Lock Vault</span></a>
+    <a href="#" id="logoutLink">↪ <span>Logout</span></a>
+  </nav>
+</aside>
+
+<main class="app-main">
+  <header class="app-header">
+    <div>
+      <h1>Dashboard</h1>
+      <p>Manage your digital legacy from one place.</p>
+    </div>
+    <div class="user-chip">
+      Welcome, <strong id="userName">Loading...</strong>
+      <span class="avatar" id="userAvatar">?</span>
+    </div>
+  </header>
+
+  <p id="dashboardMessage" role="status" aria-live="polite">
+    Loading your vault...
+  </p>
+
+  <section class="stats-grid">
+    <div class="stat-card">
+      <span class="stat-icon blue">▤</span>
+      <div><small>Total Documents</small><strong id="documentCount">—</strong></div>
+    </div>
+
+    <div class="stat-card">
+      <span class="stat-icon purple">♙</span>
+      <div><small>Total Beneficiaries</small><strong>Not connected</strong></div>
+    </div>
+
+    <div class="stat-card">
+      <span class="stat-icon red">✉</span>
+      <div><small>Personal Messages</small><strong>Not connected</strong></div>
+    </div>
+
+    <div class="stat-card">
+      <span class="stat-icon orange">▣</span>
+      <div><small>Storage Used</small><strong id="storageUsed">—</strong></div>
+    </div>
+  </section>
+
+  <section class="dashboard-grid">
+    <div class="panel large">
+      <div class="panel-head">
+        <h2>Recent Documents</h2>
+        <a href="documents.html">View All</a>
+      </div>
+
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>File Name</th>
+              <th>Category</th>
+              <th>Upload Date</th>
+              <th>Size</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="recentDocuments">
+            <tr><td colspan="5">Loading documents...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <a class="btn btn-primary small-btn" href="documents.html">
+        View All Documents
+      </a>
+    </div>
+
+    <div class="panel quick">
+      <h2>Quick Actions</h2>
+      <a href="documents.html">↥ &nbsp; Upload Document</a>
+      <a href="beneficiaries.html">♙ &nbsp; Manage Beneficiaries</a>
+      <a href="messages.html">✉ &nbsp; Manage Messages</a>
+
+      <div class="storage">
+        <h3>Storage Overview</h3>
+        <div class="donut">
+          <b id="storagePercent">0%</b>
+          <small>Used</small>
+        </div>
+        <p>
+          <span id="storageDetail">Calculating storage...</span>
+          <br>
+          <strong id="storagePercentageText">0% used</strong>
+        </p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="../js/app.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const STORAGE_LIMIT = 1000 * 1024 * 1024; // 1000 MiB display limit
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    if (bytes < 1024 * 1024 * 1024)
+      return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+  }
+
+  function formatDate(date) {
+    if (!date) return "—";
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return "—";
+    return parsed.toLocaleDateString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric"
+    });
+  }
+
+  async function api(url, options = {}) {
+    const response = await fetch(url, {
+      credentials: "same-origin",
+      ...options,
+      headers: {
+        ...(options.headers || {})
+      }
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const error = new Error(data.error || "Request failed.");
+      error.status = response.status;
+      throw error;
+    }
+
+    return data;
+  }
+
+  function showMessage(message) {
+    $("dashboardMessage").textContent = message;
+  }
+
+  function makeCell(row, value) {
+    const cell = document.createElement("td");
+    cell.textContent = value ?? "—";
+    row.appendChild(cell);
+    return cell;
+  }
+
+  function renderDocuments(documents) {
+    const tbody = $("recentDocuments");
+    tbody.replaceChildren();
+
+    if (!documents.length) {
+      const row = document.createElement("tr");
+      const cell = makeCell(row, "No documents uploaded yet.");
+      cell.colSpan = 5;
+      tbody.appendChild(row);
+      return;
+    }
+
+    const recent = [...documents]
+      .sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt))
+      .slice(0, 5);
+
+    recent.forEach(doc => {
+      const row = document.createElement("tr");
+      makeCell(row, doc.name);
+      makeCell(row, doc.category);
+      makeCell(row, formatDate(doc.uploadedAt));
+      makeCell(row, formatSize(doc.size));
+
+      const actions = document.createElement("td");
+      const download = document.createElement("a");
+      download.href = "/api/documents/" + encodeURIComponent(doc.id) + "/download";
+      download.textContent = "Download";
+      download.style.marginRight = "8px";
+      actions.appendChild(download);
+
+      row.appendChild(actions);
+      tbody.appendChild(row);
+    });
+  }
+
+  async function loadDashboard() {
+    try {
+      const status = await api("/api/vault/status");
+
+      if (!status.passwordSet) {
+        showMessage("Set up your master vault password to get started.");
+        $("documentCount").textContent = "0";
+        $("storageUsed").textContent = "0 MB";
+        $("storagePercent").textContent = "0%";
+        $("storageDetail").textContent = "0 MB of 1000 MB";
+        $("storagePercentageText").textContent = "0% used";
+        renderDocuments([]);
+        return;
+      }
+
+      if (!status.unlocked) {
+        showMessage("Your vault is locked. Open Documents to unlock it and view your files.");
+        $("documentCount").textContent = "—";
+        $("storageUsed").textContent = "Locked";
+        $("storagePercent").textContent = "—";
+        $("storageDetail").textContent = "Unlock your vault to view storage.";
+        $("storagePercentageText").textContent = "Vault locked";
+        $("recentDocuments").replaceChildren();
+        const row = document.createElement("tr");
+        const cell = makeCell(row, "Unlock your vault to view your documents.");
+        cell.colSpan = 5;
+        $("recentDocuments").appendChild(row);
+        return;
+      }
+
+      const [profile, result] = await Promise.all([
+        api("/api/me"),
+        api("/api/documents")
+      ]);
+
+      const user = profile.user || profile;
+      const name = user.name || user.displayName || user.email || "User";
+      $("userName").textContent = name;
+      $("userAvatar").textContent = name.trim().charAt(0).toUpperCase();
+
+      const documents = Array.isArray(result.documents)
+        ? result.documents
+        : [];
+
+      const totalBytes = documents.reduce(
+        (sum, doc) => sum + (Number(doc.size) || 0), 0
+      );
+
+      const usedMB = totalBytes / (1024 * 1024);
+      const percentage = Math.min(
+        100, (totalBytes / STORAGE_LIMIT) * 100
+      );
+
+      $("documentCount").textContent = documents.length;
+      $("storageUsed").textContent = formatSize(totalBytes);
+      $("storagePercent").textContent = percentage.toFixed(1) + "%";
+      $("storageDetail").textContent =
+        formatSize(totalBytes) + " of " + formatSize(STORAGE_LIMIT);
+      $("storagePercentageText").textContent =
+        percentage.toFixed(1) + "% used";
+
+      renderDocuments(documents);
+      showMessage("Your vault is unlocked and your dashboard is up to date.");
+    } catch (error) {
+      if (error.status === 401) {
+        showMessage("Your session has expired. Please sign in again.");
+      } else {
+        showMessage(error.message || "Unable to load your dashboard.");
+      }
+    }
+  }
+
+  $("lockVaultLink").addEventListener("click", async event => {
+    event.preventDefault();
+    try {
+      await api("/api/vault/lock", { method: "POST" });
+      window.location.href = "documents.html";
+    } catch (error) {
+      showMessage(error.message || "Unable to lock your vault.");
+    }
+  });
+
+  $("logoutLink").addEventListener("click", async event => {
+    event.preventDefault();
+    if (!confirm("Are you sure you want to log out?")) return;
+
+    try {
+      await api("/auth/logout", { method: "POST" });
+      window.location.href = "../index.html";
+    } catch (error) {
+      showMessage("Logout endpoint needs to be verified in your backend.");
+    }
+  });
+
+  loadDashboard();
+})();
+</script>
+</body>
+</html>

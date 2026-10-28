@@ -1,0 +1,563 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documents | Digital Will Vault</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    [hidden] { display: none !important; }
+    .vault-security { max-width: 560px; margin: 32px auto; }
+    .vault-security input {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 8px 0 18px;
+      padding: 12px;
+    }
+    .vault-security button { margin-top: 8px; }
+    .vault-message { margin: 14px 0; overflow-wrap: anywhere; }
+    .vault-lock-button { margin-left: 12px; }
+  </style>
+</head>
+
+<body class="app-page">
+  <aside class="sidebar">
+    <a class="brand side-brand" href="dashboard.html">
+      <span class="brand-icon">▣</span> Digital Will Vault
+    </a>
+
+    <nav class="side-nav">
+      <a href="dashboard.html">⌂ <span>Dashboard</span></a>
+      <a class="active" href="documents.html">▤ <span>Documents</span></a>
+      <a href="beneficiaries.html">♙ <span>Beneficiaries</span></a>
+      <a href="messages.html">✉ <span>Messages</span></a>
+      <a href="profile.html">♙ <span>Profile</span></a>
+      <a href="documents.html">⌕ <span>Search Documents</span></a>
+      <a href="settings.html">⚙ <span>Settings</span></a>
+      <a href="/">↪ <span>Home</span></a>
+    </nav>
+  </aside>
+
+  <main class="app-main">
+    <header class="app-header">
+      <div>
+        <h1>Documents</h1>
+        <p>Store and manage your important files.</p>
+      </div>
+
+      <button id="lockVaultBtn" class="btn btn-primary vault-lock-button" hidden>
+        Lock Vault
+      </button>
+    </header>
+
+    <section id="vaultGate" class="panel vault-security">
+      <h2 id="gateTitle">Secure Your Vault</h2>
+      <p id="gateDescription">
+        Create a master password to protect access to your documents.
+      </p>
+
+      <form id="setupForm" hidden>
+        <label for="masterPassword">Master Password</label>
+        <input
+          id="masterPassword"
+          type="password"
+          minlength="10"
+          maxlength="128"
+          autocomplete="new-password"
+          required
+          placeholder="At least 10 characters"
+        >
+
+        <label for="confirmPassword">Confirm Master Password</label>
+        <input
+          id="confirmPassword"
+          type="password"
+          minlength="10"
+          maxlength="128"
+          autocomplete="new-password"
+          required
+          placeholder="Enter it again"
+        >
+
+        <button class="btn btn-primary" type="submit">
+          Create Vault Password
+        </button>
+      </form>
+
+      <form id="unlockForm" hidden>
+        <label for="unlockPassword">Master Password</label>
+        <input
+          id="unlockPassword"
+          type="password"
+          maxlength="128"
+          autocomplete="current-password"
+          required
+          placeholder="Enter your master password"
+        >
+
+        <button class="btn btn-primary" type="submit">
+          Unlock Vault
+        </button>
+      </form>
+
+      <p id="vaultMessage" class="vault-message" role="status" aria-live="polite"></p>
+
+      <button id="retryStatusBtn" class="btn btn-primary" type="button" hidden>
+        Check Again
+      </button>
+    </section>
+
+    <section id="documentsArea" hidden>
+      <div class="panel">
+       <div class="toolbar">
+  <input
+  id="docSearch"
+  type="search"
+  placeholder="Search by filename, category, or type..."
+  aria-label="Search documents by filename, category, or file type"
+  autocomplete="off"
+>
+  <select id="categoryFilter" aria-label="Filter by category">
+    <option value="">All Categories</option>
+    <option value="Identity Proof">Identity Proof</option>
+    <option value="Property">Property</option>
+    <option value="Insurance">Insurance</option>
+    <option value="Bank">Bank</option>
+    <option value="Other">Other</option>
+  </select>
+</div>
+<p id="listMessage" role="status" aria-live="polite"></p>
+
+        <table id="documentsTable">
+          <thead>
+            <tr>
+              <th>File Name</th>
+              <th>Category</th>
+              <th>Upload Date</th>
+              <th>Size</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="documentsList">
+            <tr>
+              <td colspan="5">Your vault is empty. Real document uploads are the next step.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      
+<div class="panel upload-panel" id="upload">
+  <h2>Upload Document</h2>
+  <p>Upload a PDF, JPG, or PNG file. Maximum size: 10 MB.</p>
+
+  <form id="uploadForm">
+    <label for="documentCategory">Category</label>
+    <select id="documentCategory" name="category" required>
+      <option value="Other">Other</option>
+      <option value="Identity Proof">Identity Proof</option>
+      <option value="Property">Property</option>
+      <option value="Insurance">Insurance</option>
+      <option value="Bank">Bank</option>
+    </select>
+
+    <label for="documentFile">Choose File</label>
+    <input
+      id="documentFile"
+      name="document"
+      type="file"
+      accept=".pdf,.jpg,.jpeg,.png"
+      required
+    >
+
+    <button
+      id="uploadButton"
+      class="btn btn-primary"
+      type="submit"
+    >
+      Upload Document
+    </button>
+  </form>
+
+  <p id="uploadMessage" role="status" aria-live="polite"></p>
+</div>
+
+    </section>
+  </main>
+
+  <script src="../js/app.js"></script>
+  <script>
+    const gate = document.getElementById("vaultGate");
+    const gateTitle = document.getElementById("gateTitle");
+    const gateDescription = document.getElementById("gateDescription");
+    const setupForm = document.getElementById("setupForm");
+    const unlockForm = document.getElementById("unlockForm");
+    const documentsArea = document.getElementById("documentsArea");
+    const lockButton = document.getElementById("lockVaultBtn");
+    const message = document.getElementById("vaultMessage");
+    const retryButton = document.getElementById("retryStatusBtn");
+
+    function showMessage(text) {
+      message.textContent = text;
+    }
+
+    function showLockedScreen(mode) {
+      gate.hidden = false;
+      documentsArea.hidden = true;
+      lockButton.hidden = true;
+      retryButton.hidden = true;
+      setupForm.hidden = mode !== "setup";
+      unlockForm.hidden = mode !== "unlock";
+
+      if (mode === "setup") {
+        gateTitle.textContent = "Create Your Vault Password";
+        gateDescription.textContent =
+          "Choose a strong master password. You will need it to unlock your vault.";
+        document.getElementById("masterPassword").value = "";
+        document.getElementById("confirmPassword").value = "";
+      } else {
+        gateTitle.textContent = "Unlock Your Vault";
+        gateDescription.textContent =
+          "Enter your master password to access your documents.";
+        document.getElementById("unlockPassword").value = "";
+      }
+    }
+
+    function showUnlockedScreen() {
+      gate.hidden = true;
+      documentsArea.hidden = false;
+      lockButton.hidden = false;
+    }
+
+    
+async function apiRequest(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+
+  // Let the browser set the multipart boundary for file uploads.
+  if (
+    options.body &&
+    !(options.body instanceof FormData) &&
+    !headers["Content-Type"]
+  ) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    ...options,
+    headers
+  });
+
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error("Unexpected server response. Check the backend.");
+  }
+
+  if (!response.ok) {
+    throw new Error(data.error || "Something went wrong.");
+  }
+
+  return data;
+}
+
+    async function checkVaultStatus() {
+      gate.hidden = false;
+      documentsArea.hidden = true;
+      lockButton.hidden = true;
+      setupForm.hidden = true;
+      unlockForm.hidden = true;
+      retryButton.hidden = true;
+      gateTitle.textContent = "Checking Your Vault...";
+      gateDescription.textContent = "Verifying your sign-in and vault status.";
+      showMessage("");
+
+      try {
+        const status = await apiRequest("/api/vault/status");
+
+        if (!status.passwordSet) {
+          showLockedScreen("setup");
+        } else if (!status.unlocked) {
+          showLockedScreen("unlock");
+        } else {
+          showUnlockedScreen();
+          await loadDocuments();
+        }
+      } catch (error) {
+        gateTitle.textContent = "Vault Status Unavailable";
+        gateDescription.textContent =
+          "Sign in with Google and make sure the LegacyVault server is running.";
+        showMessage(error.message);
+        retryButton.hidden = false;
+      }
+    }
+
+    setupForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      showMessage("");
+
+      const password = document.getElementById("masterPassword").value;
+      const confirmPassword = document.getElementById("confirmPassword").value;
+
+      if (password.length < 10) {
+        showMessage("Use a password with at least 10 characters.");
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        showMessage("The passwords do not match.");
+        return;
+      }
+
+      const submitButton = setupForm.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
+
+      try {
+        await apiRequest("/api/vault/setup", {
+          method: "POST",
+          body: JSON.stringify({ password, confirmPassword })
+        });
+
+        setupForm.reset();
+        await checkVaultStatus();
+        showMessage("Vault password created successfully.");
+      } catch (error) {
+        showMessage(error.message);
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
+
+    unlockForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      showMessage("");
+
+      const password = document.getElementById("unlockPassword").value;
+      const submitButton = unlockForm.querySelector('button[type="submit"]');
+      submitButton.disabled = true;
+
+      try {
+        await apiRequest("/api/vault/unlock", {
+          method: "POST",
+          body: JSON.stringify({ password })
+        });
+
+        unlockForm.reset();
+        await checkVaultStatus();
+        showMessage("Vault unlocked successfully.");
+      } catch (error) {
+        showMessage(error.message);
+      } finally {
+        submitButton.disabled = false;
+      }
+    });
+
+const uploadForm = document.getElementById("uploadForm");
+const uploadButton = document.getElementById("uploadButton");
+const uploadMessage = document.getElementById("uploadMessage");
+
+const documentsList = document.getElementById("documentsList");
+const listMessage = document.getElementById("listMessage");
+const searchInput = document.getElementById("docSearch");
+const categoryFilter = document.getElementById("categoryFilter");
+
+let allDocuments = [];
+
+uploadForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  uploadMessage.textContent = "";
+
+  const fileInput = document.getElementById("documentFile");
+  const file = fileInput.files[0];
+
+  if (!file) {
+    uploadMessage.textContent = "Please choose a file first.";
+    return;
+  }
+
+  if (file.size > 10 * 1024 * 1024) {
+    uploadMessage.textContent = "Maximum file size is 10 MB.";
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append(
+    "category",
+    document.getElementById("documentCategory").value
+  );
+  formData.append("document", file);
+
+  uploadButton.disabled = true;
+  uploadButton.textContent = "Uploading...";
+
+  try {
+    await apiRequest("/api/documents", {
+      method: "POST",
+      body: formData
+    });
+
+    uploadForm.reset();
+    uploadMessage.textContent = "Document uploaded successfully!";
+  } catch (error) {
+    uploadMessage.textContent = error.message;
+  } finally {
+    uploadButton.disabled = false;
+    uploadButton.textContent = "Upload Document";
+  }
+});
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) {
+    return (bytes / 1024).toFixed(1) + " KB";
+  }
+  return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+}
+
+function makeCell(value) {
+  const cell = document.createElement("td");
+  cell.textContent = value == null ? "" : String(value);
+  return cell;
+}
+
+async function loadDocuments() {
+  listMessage.textContent = "Loading documents...";
+
+  try {
+    const data = await apiRequest("/api/documents");
+    allDocuments = Array.isArray(data.documents)
+      ? data.documents
+      : [];
+
+    renderDocuments();
+
+    listMessage.textContent = allDocuments.length
+      ? `${allDocuments.length} document(s) in your vault.`
+      : "";
+  } catch (error) {
+    listMessage.textContent = error.message;
+  }
+}
+
+function renderDocuments() {
+  const query = searchInput.value.trim().toLowerCase();
+  const category = categoryFilter.value;
+
+  
+const filtered = allDocuments.filter(doc => {
+  const fileName = String(doc.name || "").toLowerCase();
+  const fileCategory = String(doc.category || "Other").toLowerCase();
+  const fileType = fileName.includes(".")
+    ? fileName.split(".").pop()
+    : "";
+
+  const searchMatches =
+    fileName.includes(query) ||
+    fileCategory.includes(query) ||
+    fileType.includes(query);
+
+  const categoryMatches =
+    !category || doc.category === category;
+
+  return searchMatches && categoryMatches;
+});
+
+
+  documentsList.replaceChildren();
+
+  if (filtered.length === 0) {
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+
+    cell.colSpan = 5;
+    cell.textContent = allDocuments.length
+      ? "No documents match your search."
+      : "Your vault is empty. Upload your first document below.";
+
+    row.appendChild(cell);
+    documentsList.appendChild(row);
+    return;
+  }
+
+  filtered.forEach(doc => {
+    const row = document.createElement("tr");
+
+    row.appendChild(makeCell(doc.name || "Untitled"));
+    row.appendChild(makeCell(doc.category || "Other"));
+
+    const date = new Date(doc.uploadedAt);
+    row.appendChild(makeCell(
+      Number.isNaN(date.getTime())
+        ? "—"
+        : date.toLocaleDateString()
+    ));
+
+    row.appendChild(makeCell(formatFileSize(Number(doc.size) || 0)));
+
+    const actionsCell = document.createElement("td");
+    const downloadLink = document.createElement("a");
+
+    downloadLink.href =
+      "/api/documents/" +
+      encodeURIComponent(doc.id) +
+      "/download";
+    downloadLink.textContent = "Download";
+    downloadLink.className = "btn btn-primary";
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete";
+    deleteButton.className = "btn";
+
+    deleteButton.addEventListener("click", async () => {
+      if (!confirm(`Delete "${doc.name}" permanently?`)) return;
+
+      deleteButton.disabled = true;
+
+      try {
+        await apiRequest(
+          "/api/documents/" + encodeURIComponent(doc.id),
+          { method: "DELETE" }
+        );
+
+        uploadMessage.textContent = "Document deleted successfully.";
+        await loadDocuments();
+      } catch (error) {
+        listMessage.textContent = error.message;
+        deleteButton.disabled = false;
+      }
+    });
+
+    actionsCell.append(downloadLink, deleteButton);
+    row.appendChild(actionsCell);
+    documentsList.appendChild(row);
+  });
+}
+
+searchInput.addEventListener("input", renderDocuments);
+categoryFilter.addEventListener("change", renderDocuments);
+
+    lockButton.addEventListener("click", async () => {
+      lockButton.disabled = true;
+      showMessage("");
+
+      try {
+        await apiRequest("/api/vault/lock", { method: "POST" });
+        await checkVaultStatus();
+        showMessage("Vault locked successfully.");
+      } catch (error) {
+        showMessage(error.message);
+      } finally {
+        lockButton.disabled = false;
+      }
+    });
+
+    retryButton.addEventListener("click", checkVaultStatus);
+
+    checkVaultStatus();
+  </script>
+</body>
+</html>

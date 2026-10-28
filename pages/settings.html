@@ -1,0 +1,214 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings | LegacyVault</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <style>
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .settings-card { padding: 24px; }
+    .settings-card h2 { margin-top: 0; }
+    .settings-card p { line-height: 1.6; }
+    .settings-action { margin-top: 12px; }
+    .settings-status { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body class="app-page">
+  <aside class="sidebar">
+    <a class="brand side-brand" href="dashboard.html">
+      <span class="brand-icon">▣</span> Digital Will Vault
+    </a>
+    <nav class="side-nav">
+      <a href="dashboard.html">⌂ <span>Dashboard</span></a>
+      <a href="documents.html">▤ <span>Documents</span></a>
+      <a href="beneficiaries.html">♙ <span>Beneficiaries</span></a>
+      <a href="messages.html">✉ <span>Messages</span></a>
+      <a href="profile.html">♙ <span>Profile</span></a>
+      <a href="documents.html">⌕ <span>Search Documents</span></a>
+      <a class="active" href="settings.html">⚙ <span>Settings</span></a>
+      <a href="../index.html">↪ <span>Home</span></a>
+    </nav>
+  </aside>
+
+  <main class="app-main">
+    <header class="app-header">
+      <div>
+        <h1>Settings</h1>
+        <p>Manage your account and vault preferences.</p>
+      </div>
+    </header>
+
+    <p id="settingsStatus" class="settings-status"
+       role="status" aria-live="polite"></p>
+
+    <section class="settings-grid">
+      <article class="panel settings-card">
+        <h2>🔐 Vault Security</h2>
+        <p>Check your vault status and protect access to your important documents.</p>
+        <p><strong>Status:</strong> <span id="vaultStatus">Checking...</span></p>
+        <button id="lockVaultBtn" class="btn btn-primary settings-action" hidden>
+          Lock Vault
+        </button>
+        <a class="btn settings-action" href="documents.html">
+          Open Documents
+        </a>
+      </article>
+
+      <article class="panel settings-card">
+        <h2>👤 Account</h2>
+        <p>Review your signed-in account information.</p>
+        <p><strong>Name:</strong> <span id="accountName">Loading...</span></p>
+        <p><strong>Email:</strong> <span id="accountEmail">Loading...</span></p>
+        <a class="btn btn-primary settings-action" href="profile.html">
+          View Profile
+        </a>
+      </article>
+
+      <article class="panel settings-card">
+        <h2>📁 Storage & Data</h2>
+        <p>Review the documents currently stored in your vault.</p>
+        <p><strong>Documents:</strong> <span id="documentCount">—</span></p>
+        <p><strong>Total size:</strong> <span id="storageSize">—</span></p>
+        <a class="btn settings-action" href="documents.html">
+          Manage Documents
+        </a>
+      </article>
+
+      <article class="panel settings-card">
+        <h2>🔔 Notifications</h2>
+        <p>Notification preferences for future security alerts and beneficiary updates.</p>
+        <p>Notifications are not yet connected to a delivery service.</p>
+      </article>
+
+      <article class="panel settings-card">
+        <h2>🚪 Sign Out</h2>
+        <p>End your current LegacyVault session on this device.</p>
+        <button id="logoutBtn" class="btn btn-primary settings-action">
+          Sign Out
+        </button>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const statusMessage = document.getElementById("settingsStatus");
+    const vaultStatus = document.getElementById("vaultStatus");
+    const lockButton = document.getElementById("lockVaultBtn");
+
+    async function apiRequest(url, options = {}) {
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          ...(options.body ? { "Content-Type": "application/json" } : {})
+        }
+      });
+
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("Unexpected server response.");
+      }
+
+      if (!response.ok) {
+        throw new Error(data.error || "Request failed.");
+      }
+      return data;
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+    }
+
+    async function loadSettings() {
+      try {
+        const [me, vault] = await Promise.all([
+          apiRequest("/api/me"),
+          apiRequest("/api/vault/status")
+        ]);
+
+        document.getElementById("accountName").textContent =
+          me.user?.name || me.name || "Not available";
+        document.getElementById("accountEmail").textContent =
+          me.user?.email || me.email || "Not available";
+
+        vaultStatus.textContent = vault.unlocked
+          ? "Unlocked"
+          : vault.passwordSet
+            ? "Locked"
+            : "Password not set";
+
+        lockButton.hidden = !vault.unlocked;
+
+        if (vault.unlocked) {
+          try {
+            const result = await apiRequest("/api/documents");
+            const docs = Array.isArray(result.documents)
+              ? result.documents : [];
+
+            document.getElementById("documentCount").textContent =
+              String(docs.length);
+
+            const totalBytes = docs.reduce(
+              (total, doc) => total + (Number(doc.size) || 0), 0
+            );
+
+            document.getElementById("storageSize").textContent =
+              formatSize(totalBytes);
+          } catch {
+            document.getElementById("documentCount").textContent =
+              "Unavailable";
+            document.getElementById("storageSize").textContent =
+              "Unavailable";
+          }
+        } else {
+          document.getElementById("documentCount").textContent =
+            "Unlock vault to view";
+          document.getElementById("storageSize").textContent =
+            "Unlock vault to view";
+        }
+      } catch (error) {
+        statusMessage.textContent =
+          error.message + " Make sure you are signed in.";
+        vaultStatus.textContent = "Unavailable";
+      }
+    }
+
+    lockButton.addEventListener("click", async () => {
+      lockButton.disabled = true;
+      try {
+        await apiRequest("/api/vault/lock", { method: "POST" });
+        statusMessage.textContent = "Vault locked successfully.";
+        await loadSettings();
+      } catch (error) {
+        statusMessage.textContent = error.message;
+      } finally {
+        lockButton.disabled = false;
+      }
+    });
+
+    document.getElementById("logoutBtn").addEventListener("click", async () => {
+      if (!confirm("Are you sure you want to sign out?")) return;
+
+      try {
+        await apiRequest("/auth/logout", { method: "POST" });
+        window.location.href = "../index.html";
+      } catch (error) {
+        statusMessage.textContent = error.message;
+      }
+    });
+
+    loadSettings();
+  </script>
+</body>
+</html>
